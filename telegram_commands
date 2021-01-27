@@ -1,0 +1,350 @@
+library(tidyr)
+library(telegram.bot)
+library(RMySQL)
+library(httr)
+library(stringi)
+library(mailR)
+library(htmlTable)
+library(dplyr)
+library(stringr)
+
+
+#token = "1176356641:AAHx2IBEVH2ZKhxPHgON1G6YKDRDLqFvNAs"
+token = "1204580159:AAHCoS6K7j1dpv-1-vlpDDbgXg808mFTZ7E"
+bot <- Bot(token = "1204580159:AAHCoS6K7j1dpv-1-vlpDDbgXg808mFTZ7E")
+#updates <- bot$getUpdates()
+#library(googlesheets4)
+
+
+killDbConnections <- function () {
+
+  all_cons <- dbListConnections(MySQL())
+
+  print(all_cons)
+
+  for(con in all_cons)
+    +  dbDisconnect(con)
+
+  print(paste(length(all_cons), " connections killed."))
+
+}
+
+killDbConnections()
+
+
+
+MyDataBase = dbConnect(MySQL(), user='taboola4', password='Cjb3zDj8', dbname='telegram', host='167.71.154.63')
+
+data_past = dbGetQuery(MyDataBase,"select * from telegram_log")[,-1]
+
+offset <- data_past[nrow(data_past),9]
+
+code_tele <- GET(paste0("https://api.telegram.org/bot1204580159:AAHCoS6K7j1dpv-1-vlpDDbgXg808mFTZ7E/getUpdates?offset=",offset),encode = "json")
+content(code_tele)
+
+#ss2 <- gs4_get("1wwCdttW_Jv6ii84Z2xdnuj3zKiVSsmj1ITZiUkRNCCY") 
+if(length(content(code_tele)$result) == 0 ) {} else {
+
+
+data <- matrix( nrow = length(content(code_tele)$result) , ncol = 9 )
+
+for (i in 1:length(content(code_tele)$result)) {
+
+if(is.null(content(code_tele)$result[[i]]$message$chat$type)) {
+
+
+
+if(is.null(content(code_tele)$result[[i]]$channel_post$chat$type)) {data[i,1] <- NA} else {data[i,1] <- content(code_tele)$result[[i]]$channel_post$chat$type}
+
+
+
+} else {data[i,1] <- content(code_tele)$result[[i]]$message$chat$type}
+
+if(is.null(content(code_tele)$result[[i]]$message$from$first_name)) {data[i,2] <- NA} else {data[i,2] <- content(code_tele)$result[[i]]$message$from$first_name}
+
+if(is.null(content(code_tele)$result[[i]]$message$from$last_name)) {data[i,3] <- NA} else {data[i,3] <- content(code_tele)$result[[i]]$message$from$last_name}
+
+if(is.null(content(code_tele)$result[[i]]$message$chat$title)) 
+
+{
+
+if(is.null(content(code_tele)$result[[i]]$channel_post$sender_chat$title))
+ {data[i,4] <- NA} else {data[i,4] <- content(code_tele)$result[[i]]$channel_post$sender_chat$title 
+ 
+ }
+ 
+ } else {
+ data[i,4] <- content(code_tele)$result[[i]]$message$chat$title
+ }
+ 
+ 
+ if(is.null(content(code_tele)$result[[i]]$message$chat$username)) 
+
+{
+
+if(is.null(content(code_tele)$result[[i]]$channel_post$sender_chat$username))
+ {data[i,5] <- NA} else {data[i,5] <- content(code_tele)$result[[i]]$channel_post$sender_chat$username 
+ 
+ }
+ 
+ } else {
+ data[i,5] <- content(code_tele)$result[[i]]$message$chat$username
+ }
+ 
+ 
+ 
+
+if(is.null(content(code_tele)$result[[i]]$message$text)) {if(is.null(content(code_tele)$result[[i]]$channel_post$text))
+
+ {data[i,6] <- NA} 
+ 
+ else
+
+ {data[i,6] <- content(code_tele)$result[[i]]$channel_post$text}} else {data[i,6] <- content(code_tele)$result[[i]]$message$text }
+ 
+ 
+
+if(is.null(content(code_tele)$result[[i]]$channel_post$date)) {
+
+
+
+
+if(is.null(content(code_tele)$result[[i]]$message$date)) {data[i,7] <- NA} else { data[i,7] <- as.POSIXct(as.numeric(content(code_tele)$result[[i]]$message$date), origin='1970-01-01')  }
+
+
+} else {data[i,7] <- as.POSIXct(as.numeric(content(code_tele)$result[[i]]$channel_post$date), origin='1970-01-01')}
+
+if(is.null(content(code_tele)$result[[i]]$channel_post$chat$`id`)) {
+
+
+
+if(is.null(content(code_tele)$result[[i]]$message$chat$`id`)) {data[i,8] <- NA} else { data[i,8] <- content(code_tele)$result[[i]]$message$chat$`id`}
+
+
+} else {data[i,8] <- content(code_tele)$result[[i]]$channel_post$chat$`id`}
+
+data[i,9] <- content(code_tele)$result[[i]]$`update_id`
+
+}
+
+dates <- as.POSIXct(as.numeric(data[,7]), origin='1970-01-01')
+
+data <- as.data.frame(data)
+
+data[,7] <- dates
+
+colnames(data) <- c("type","first_name","last_name","title","username","text","date","chat_id","update_id")
+
+seq <- 1:9
+seq <- seq[-7]
+for(i in seq) {
+data[,i] <- as.character(data[,i])
+}
+
+
+#data_past <- as.data.frame(read_sheet(ss2,sheet = "logs"))
+
+
+#(i in 1:ncol(data_past)){
+#data_past[[i]] <- as.character(unlist(data_past[,i])) }
+
+#colnames(data) <- colnames(data_past)
+
+
+
+
+
+log <- subset(data, !(update_id %in% data_past$update_id))
+
+for (i in 1:ncol(log)) {
+
+log[,i] <- stri_trans_general(log[,i], "latin-ascii" )
+
+
+}
+
+dbWriteTable(MyDataBase, name="telegram_log", value=log,append=TRUE)
+
+
+
+#range <- paste0("logs!",anchor_tele)
+#range_write(ss2, data = log, range = range, col_names = FALSE)
+
+command_past <- dbGetQuery(MyDataBase,"select * from telegram_command")[,-1]
+#command_data <- dplyr::filter(data,grepl("/start",text), grepl("/include",text) | grepl("/exclude",text) | grepl("/id",text) | grepl("/trinklink",text))
+command_data <- data %>% filter(grepl("/start" ,text) | grepl("/id " ,text) | grepl("/exclude " ,text) | grepl("/include " ,text) | grepl("/trinklink " ,text))
+
+for(i in 1:ncol(command_past)){
+command_past[[i]] <- as.character(unlist(command_past[,i])) }
+
+
+input_command <- subset(command_data, !(update_id %in% command_past$update_id))
+index_command <- nrow(command_past)+2
+anchor_command <- paste0("A",index_command,sep="")
+range_command <- paste0("commands!",anchor_command)
+input_command <- input_command %>% mutate(text = str_replace(text, "\\s", "|")) %>% separate(text, into = c("command", "text"), sep = "\\|")
+
+
+
+
+
+demo <- dbGetQuery(MyDataBase,"select * from demo")[,-1]
+
+image <- demo$image
+
+text <- paste0("Merhaba , \n Sizi burada gormek guzel! MyShopAlarm sizinle e-ticaret sirketlerinin ozel kampanya ve kupon kodlarini paylasacak, alisveris yapildikca kazanmanizi saglayacak.
+
+Iste uygulama ile yapabilecekleriniz: \n  
+
+-  Eger bu uygulama uzerinden gelir elde etmek istiyorsaniz id komutu ile Reklamstore affiliate id numaranizi yazmaniz yeterli. \n 
+
+- Haberdar olmak istediginiz kategorileri exclude komutu ile secim listesinden cikarabilirsiniz. \n 
+
+- Gelir uretilmesi icin alisveris yapilmadan once MyShopAlarm tarafindan  paylasilan kampanya linkine tiklanmasi gerekir. \n 
+
+Iste ornek bir kampanya : \n  
+
+","[ ]",'(',demo$image,')',"Firsat Alarmi:",demo$offer_name,"
+",
+demo$promotion_name
+,"
+","
+[Alisverise Basla]","(",demo$tracking_url,")")
+
+
+
+if(nrow(input_command) == 0 ) {} else {
+
+for(i in 1:nrow(input_command)) {
+
+if (input_command[i,]$command == "/start") {
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = text,
+  parse_mode = "Markdown")
+
+
+} else  if (input_command[i,]$command == "/include") {
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = paste0(input_command[i,]$text," included"),
+  parse_mode = "Markdown")
+  
+} else if (input_command[i,]$command == "/exclude") {
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = paste0(input_command[i,]$text," excluded"),
+  parse_mode = "Markdown")
+
+} else if (input_command[i,]$command == "/id") {
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = paste0(input_command[i,]$text," added as a valid id"),
+  parse_mode = "Markdown")
+
+} else if (input_command[i,]$command == "/trinklink") {
+
+
+trlink <- GET("https://trinklink1.s3-eu-west-1.amazonaws.com/data.json",encode = "json")
+data <- content(trlink)
+
+str <- input_command$text
+
+x <- strsplit(str," ")[[1]][1]
+
+domain <- function(x) strsplit(gsub("http://|https://|www\\.", "", x), "/")[[c(1, 1)]]
+
+keyword <- "(aff_id=).*"
+
+query <- paste0("SELECT text FROM telegram.telegram_command where command = '/id' and chat_id =",input_command[i,]$chat_id)
+
+if (nrow(dbGetQuery(MyDataBase,query)) == 0) {aff_id <- 28775 } else {
+
+aff_id <- dbGetQuery(MyDataBase,query)[nrow(dbGetQuery(MyDataBase,query)),1]
+
+}
+
+
+
+
+for(j in 1:length(data)) {
+
+if(data[[j]]$url == domain(x)) {index <- j} 
+
+}
+
+
+if(exists("index")) {
+
+trlink <- paste0(sub(keyword,"",data[[index]]$tracking),"aff_id","=",aff_id,"&url=",URLencode(paste0(x,"?",data[[index]]$source), reserved = TRUE))
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = str_replace_all(trlink, fixed("_"), "\\_"),
+  parse_mode = "Markdown")
+
+
+} else {
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = "Kampanya bulunamadi.",
+  parse_mode = "Markdown")
+
+
+
+}} 
+
+else {
+
+bot$sendMessage(input_command[i,]$chat_id,
+  text = paste0("Gecersiz komut girdiniz. Gecerli komutlar : /start , /include , /exclude , /id "),
+  parse_mode = "Markdown")
+
+}
+
+} 
+}
+
+for (i in 1:ncol(input_command)) {
+
+input_command[,i] <- stri_trans_general(input_command[,i], "latin-ascii" )
+
+
+}
+
+
+dbWriteTable(MyDataBase, name="telegram_command", value=input_command,append=TRUE)
+
+log <- log %>% dplyr::filter(text == "/start")
+
+if(nrow(log) == 0 ) {} else {
+
+log[,5] <- paste0("https://t.me/",log[,5])
+
+
+y <- htmlTable(log,rnames = FALSE)
+html_body <- paste0("<p> Kullanici eklendi. </p>", y)
+
+send.mail(from = "can@reklamstore.com",
+         to = c("can@reklamstore.com","sencan.ozen@reklamstore.com","guckan@reklamstore.com"),
+        subject = "Telegram Report",
+       body = html_body,
+      smtp = list(host.name = "smtp.gmail.com", port = 465, user.name = "can@reklamstore.com", passwd = "boun0991", ssl = TRUE),
+     authenticate = TRUE,
+  html=TRUE,
+ send = TRUE,          
+debug = TRUE)
+
+
+
+
+}
+
+
+#range_write(ss2, data = input_command, range = range_command, col_names = FALSE)
+}
+
+
+
+
+
+
